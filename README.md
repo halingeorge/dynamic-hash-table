@@ -11,10 +11,7 @@ git submodule update
 ## Сборка
 
 ```
-mkdir build
-cd build
-cmake ..
-make
+mkdir build; cd build; cmake ..; make
 ```
 
 ## Сборка с TSAN (проверено на clang 9)
