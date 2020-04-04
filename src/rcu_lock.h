@@ -17,19 +17,20 @@ class RCULock {
   }
 
   void Synchronize() {
-    std::vector<std::atomic<int>*> cur_ts;
-    std::vector<int> sync_ts;
-    for (auto& el : last_read_) {
-      sync_ts.push_back(el.load());
-      cur_ts.push_back(&el);
+    std::vector<std::atomic<uint64_t>*> current_timestamp;
+    std::vector<uint64_t> synced_timestamp;
+    for (auto& element : last_read_) {
+      synced_timestamp.push_back(element.load());
+      current_timestamp.push_back(&element);
     }
-    for (int i = 0; i < cur_ts.size(); i++) {
-	  while ((sync_ts[i] & 1) && cur_ts[i]->load() == sync_ts[i]) {
-	    std::this_thread::yield();
-	  }
+    for (int i = 0; i < current_timestamp.size(); i++) {
+      while ((synced_timestamp[i] & 1) && current_timestamp[i]->load() == synced_timestamp[i]) {
+        std::this_thread::yield();
+      }
     }
   }
 
-  ThreadLocal<std::atomic<int>> last_read_;
+ private:
+  ThreadLocal<std::atomic<uint64_t>> last_read_;
 };
 

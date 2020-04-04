@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import argparse
-import subprocess
 import os
+import subprocess
 import tempfile
 
 
@@ -73,7 +73,6 @@ def main():
         run_and_exit_if_fail('unit_tests/hash_table_test')
         os.chdir(cur_dir)
 
-
     if args.benchmark:
         run_benchmark()
         return
@@ -81,4 +80,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
