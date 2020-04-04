@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 
 TEST(HashTable, API) {
-  FixedSizeHashTable<std::string, std::string> ht(1);
+  HashTable<std::string, std::string> ht(1);
 
   std::string value;
   ASSERT_FALSE(ht.Lookup("key", value));
@@ -14,12 +14,12 @@ TEST(HashTable, API) {
 }
 
 TEST(HashTable, RemoveAbsent) {
-  FixedSizeHashTable<std::string, std::string> ht(3);
+  HashTable<std::string, std::string> ht(3);
   ASSERT_FALSE(ht.Remove("NotFound"));
 }
 
 TEST(HashTable, Overwrite) {
-  FixedSizeHashTable<std::string, std::string> ht(7);
+  HashTable<std::string, std::string> ht(7);
 
   ASSERT_TRUE(ht.Insert("key", "old"));
   ASSERT_TRUE(ht.Remove("key"));
@@ -31,7 +31,7 @@ TEST(HashTable, Overwrite) {
 }
 
 TEST(HashTable, RepeatedUpdates) {
-  FixedSizeHashTable<int, std::string> ht(17);
+  HashTable<int, std::string> ht(17);
   ASSERT_TRUE(ht.Insert(1, "One"));
   ASSERT_FALSE(ht.Insert(1, "Two"));
 
@@ -46,7 +46,7 @@ TEST(HashTable, RepeatedUpdates) {
 }
 
 TEST(HashTable, MultipleKeys) {
-  FixedSizeHashTable<std::string, int> ht(3);
+  HashTable<std::string, int> ht(3);
 
   const int kRange = 17;
 

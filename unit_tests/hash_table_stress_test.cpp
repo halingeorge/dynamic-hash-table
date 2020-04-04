@@ -4,7 +4,7 @@
 #include <vector>
 
 void StressTest(size_t buckets, size_t thread_number, size_t iterations) {
-  FixedSizeHashTable<size_t, size_t> hash_table(buckets);
+  HashTable<size_t, size_t> hash_table(buckets);
 
   auto get_key = [buckets](size_t thread_index, size_t bucket) {
     return thread_index * buckets + bucket;

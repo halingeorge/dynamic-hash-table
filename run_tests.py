@@ -57,11 +57,13 @@ def main():
         run_benchmark()
         return
 
-    cxx_flags = ['']
+    cxx_flags = []
     if args.asan:
         cxx_flags.append('-fsanitize=address')
     if args.tsan:
         cxx_flags.append('-fsanitize=thread')
+    if not cxx_flags:
+        cxx_flags = ['']
 
     for cxx_flag in cxx_flags:
         build_dir_name = get_build_dir_name(cxx_flag)

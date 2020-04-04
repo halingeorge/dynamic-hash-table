@@ -19,7 +19,7 @@ std::vector<std::atomic<int32_t>> added_keys(kMaxAddedNumbers);
 std::atomic<size_t> put{0};
 std::atomic<size_t> get{0};
 
-FixedSizeHashTable<int32_t, int32_t> hash_table(kHashTableSize);
+HashTable<int32_t, int32_t> hash_table(kHashTableSize);
 
 }  // namespace
 

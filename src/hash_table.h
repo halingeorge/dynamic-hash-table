@@ -14,7 +14,7 @@
 #include <mutex>
 
 template<typename Key, typename Value>
-class FixedSizeHashTable {
+class HashTable {
  private:
   class Bucket {
    public:
@@ -113,7 +113,7 @@ class FixedSizeHashTable {
   };
 
  public:
-  FixedSizeHashTable(size_t num_buckets)
+  HashTable(size_t num_buckets)
       : buckets_(num_buckets), num_buckets_(num_buckets) {
   }
 
