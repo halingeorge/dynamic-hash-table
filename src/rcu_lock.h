@@ -8,6 +8,14 @@
 
 class RCULock {
  public:
+  void lock() {
+    ReadLock();
+  }
+
+  void unlock() {
+    ReadUnlock();
+  }
+
   void ReadLock() {
     ++(*last_read_);
   }

@@ -18,7 +18,7 @@ class HashTable {
  private:
   class Bucket {
    public:
-    Bucket() {
+    Bucket() : head_(new Node()) {
     }
 
     ~Bucket() {
@@ -29,30 +29,23 @@ class HashTable {
       }
     }
 
-    bool Insert(const Key& key, const Value& value) {
-      std::unique_lock<std::mutex> local_mutex(mutex_);
+    bool Insert(Key key, Value value) {
+      std::unique_lock<std::mutex> lock(mutex_);
       if (Find(key)) {
         return false;
       }
       std::atomic<Node*> new_node{new Node()};
-      new_node.load()->next.store(head_);
-      new_node.load()->key = key;
-      new_node.load()->value = value;
-      head_.exchange(new_node);
+      new_node.load()->next.store(head_.load()->next);
+      new_node.load()->key = std::move(key);
+      new_node.load()->value = std::move(value);
+      head_.load()->next.store(new_node);
       return true;
     }
 
     bool Remove(const Key& key) {
-      std::unique_lock<std::mutex> local_mutex(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       if (head_ == nullptr) {
         return false;
-      }
-      if (head_.load()->key == key) {
-        Node* to_remove = head_.load();
-        head_.store(head_.load()->next.load());
-        lock_.Synchronize();
-        delete to_remove;
-        return true;
       }
       auto head = head_.load();
       while (head->next.load() != nullptr && head->next.load()->key != key) {
@@ -70,9 +63,9 @@ class HashTable {
 
     // Wait-free
     bool Lookup(const Key& key, Value& value) {
+      std::lock_guard<RCULock> lock(lock_);
       std::optional<Value> result;
-      lock_.ReadLock();
-      auto head = head_.load();
+      auto head = head_.load()->next.load();
       while (head != nullptr) {
         if (head->key == key) {
           result = head->value;
@@ -82,10 +75,8 @@ class HashTable {
       }
       if (result.has_value()) {
         value = std::move(*result);
-        lock_.ReadUnlock();
         return true;
       }
-      lock_.ReadUnlock();
       return false;
     }
 
@@ -93,11 +84,11 @@ class HashTable {
     struct Node {
       Key key;
       Value value;
-      std::atomic<Node*> next{nullptr};
+      std::atomic<Node*> next = nullptr;
     };
 
     bool Find(const Key& key) {
-      auto head = head_.load();
+      auto head = head_.load()->next.load();
       while (head != nullptr) {
         if (head->key == key) {
           return true;
@@ -109,16 +100,16 @@ class HashTable {
 
     std::mutex mutex_;
     RCULock lock_;
-    std::atomic<Node*> head_{nullptr};
+    std::atomic<Node*> head_ = nullptr;
   };
 
  public:
-  HashTable(size_t num_buckets)
+  explicit HashTable(size_t num_buckets)
       : buckets_(num_buckets), num_buckets_(num_buckets) {
   }
 
-  bool Insert(const Key& key, const Value& value) {
-    return buckets_[hasher_(key) % buckets_.size()].Insert(key, value);
+  bool Insert(Key key, Value value) {
+    return buckets_[hasher_(key) % buckets_.size()].Insert(std::move(key), std::move(value));
   }
 
   bool Remove(const Key& key) {
@@ -134,6 +125,13 @@ class HashTable {
     auto temp = std::vector<Bucket>{num_buckets_};
     buckets_.swap(temp);
   }
+
+ private:
+  std::atomic<HashTable*> current_table_ = nullptr;
+  std::atomic<HashTable*> new_table_ = nullptr;
+  std::atomic<int32_t> resize_index_ = -1;
+  std::uint32_t resize_count_ = 0;
+  std::mutex resize_mutex_;
 
  private:
   std::vector<Bucket> buckets_;
