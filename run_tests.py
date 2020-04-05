@@ -49,20 +49,15 @@ def main():
     parser.add_argument('--asan', '-a', action='store_true', help='run tests under asan')
     parser.add_argument('--tsan', '-t', action='store_true', help='run tests under tsan')
     parser.add_argument('--benchmark', '-b', action='store_true', help='run benchmark after unittests')
-    parser.add_argument('--only-benchmark', action='store_true', help='run benchmark without unittests')
 
     args = parser.parse_args()
-
-    if args.only_benchmark:
-        run_benchmark()
-        return
 
     cxx_flags = []
     if args.asan:
         cxx_flags.append('-fsanitize=address')
     if args.tsan:
         cxx_flags.append('-fsanitize=thread')
-    if not cxx_flags:
+    if not cxx_flags and not args.benchmark:
         cxx_flags = ['']
 
     for cxx_flag in cxx_flags:
