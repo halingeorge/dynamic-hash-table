@@ -14,20 +14,27 @@
 #include <mutex>
 
 template<typename Key, typename Value>
-class HashTable {
+class HashTable;
+
+namespace hash_table_internals {
+
+template<typename Key, typename Value>
+class HashTableImpl {
  private:
   class Bucket {
-    friend class HashTable;
+    friend class HashTableImpl;
 
    public:
     Bucket() : head_(new Node()) {
     }
 
     ~Bucket() {
-      while (head_) {
-        auto next = head_.load()->next[hash_table_->current_index_].load();
-        delete head_;
-        head_.store(next);
+      for (size_t index = 0; index < 2; index++) {
+        while (head_) {
+          auto next = head_.load()->next[index].load();
+          delete head_;
+          head_.store(next);
+        }
       }
     }
 
@@ -100,7 +107,7 @@ class HashTable {
         head = head->next[index];
       }
       if (scanned_count >= kBucketNodeCountBeforeResize) {
-        hash_table_->TryToResize(hash_table_->bucket_count_ * 2 + 1);
+        hash_table_->Resize(hash_table_->BucketCount() * 2 + 1);
       }
       return found;
     }
@@ -108,83 +115,142 @@ class HashTable {
    private:
     static constexpr uint32_t kBucketNodeCountBeforeResize = 5;
 
-    HashTable* hash_table_ = nullptr;
+    HashTable<Key, Value>* hash_table_ = nullptr;
     std::atomic<Node*> head_ = nullptr;
     RCULock lock_;
     std::mutex mutex_;
   };
 
  public:
-  explicit HashTable(size_t bucket_count)
-      : buckets_(InitBuckets(bucket_count)), bucket_count_(bucket_count), current_table_(this) {
+  explicit HashTableImpl(size_t bucket_count, HashTable<Key, Value>* hash_table)
+      : master_hash_table_(hash_table), buckets_(InitBuckets(bucket_count)), bucket_count_(bucket_count) {
   }
 
   bool Insert(Key key, Value value) {
-    auto [bucket, index] = GetBucket(current_table_.load(), key);
+    auto[bucket, index] = GetBucket(this, key);
     std::unique_lock<std::mutex> lock(bucket->mutex_);
     return bucket->Insert(std::move(key), std::move(value), index);
   }
 
   bool Remove(const Key& key) {
-    auto [bucket, index] = GetBucket(current_table_.load(), key);
+    auto[bucket, index] = GetBucket(this, key);
     std::unique_lock<std::mutex> lock(bucket->mutex_);
     return bucket->Remove(key, index);
   }
 
   bool Lookup(const Key& key, Value& value) {
-    auto [bucket, index] = GetBucket(current_table_.load(), key);
-    std::unique_lock<std::mutex> lock(bucket->mutex_);
+    auto[bucket, index] = GetBucket(this, key);
     return bucket->Lookup(key, value, index);
   }
 
-  void clear() {
+  void Clear() {
     auto temp = InitBuckets(bucket_count_);
     buckets_.swap(temp);
   }
 
- private:
+ public:
   using HashResultType = typename std::hash<Key>::result_type;
+
+  size_t BucketCount() const {
+    return buckets_.size();
+  }
 
   std::vector<Bucket> InitBuckets(size_t bucket_count) {
     std::vector<Bucket> buckets(bucket_count);
     for (size_t i = 0; i < bucket_count; i++) {
-      buckets[i].hash_table_ = this;
+      buckets[i].hash_table_ = master_hash_table_;
     }
     return buckets;
   }
 
-  static std::pair<Bucket*, int32_t> GetBucketInSpecifiedHashTable(HashTable* hash_table, const Key& key) {
+  static std::pair<Bucket*, int32_t> GetBucketInSpecifiedHashTable(HashTableImpl* hash_table, const Key& key) {
     auto hash = hash_table->hasher_(key) % hash_table->buckets_.size();
     return {&hash_table->buckets_[hash], hash};
   }
 
-  static std::pair<Bucket*, int32_t> GetBucket(HashTable* hash_table, const Key& key) {
-    HashTable* current_table = hash_table->current_table_.load();
-    auto [bucket, bucket_number] = GetBucketInSpecifiedHashTable(current_table, key);
-    auto index = current_table->current_index_;
-    if (bucket_number <= current_table->resize_index_.load()) {
-      HashTable* new_table = hash_table->new_table_.load();
-      auto [new_bucket, new_bucket_number] = GetBucketInSpecifiedHashTable(new_table, key);
+  static std::pair<Bucket*, int32_t> GetBucket(HashTableImpl* hash_table, const Key& key) {
+    auto[bucket, bucket_number] = GetBucketInSpecifiedHashTable(hash_table, key);
+    auto index = hash_table->current_index_;
+    if (bucket_number <= hash_table->resize_index_.load()) {
+      HashTableImpl* new_table = hash_table->new_table_.load();
+      auto[new_bucket, new_bucket_number] = GetBucketInSpecifiedHashTable(new_table, key);
       bucket = new_bucket;
       index = new_table->current_index_;
     }
     return {bucket, index};
   }
 
-  void TryToResize(size_t new_bucket_count) {
+  HashTableImpl* ReallocateToNewHashTable(size_t new_bucket_count) {
+    return new HashTableImpl(new_bucket_count, master_hash_table_);
   }
 
  private:
+  HashTable<Key, Value>* const master_hash_table_;
   std::vector<Bucket> buckets_;
   std::hash<Key> hasher_;
   size_t bucket_count_ = 0;
   size_t current_index_ = 0;
 
  private:
-  std::atomic<HashTable*> current_table_ = nullptr;
-  std::atomic<HashTable*> new_table_ = nullptr;
+  std::atomic<HashTableImpl*> new_table_ = nullptr;
   std::atomic<int32_t> resize_index_ = -1;
-  std::uint32_t resize_count_ = 0;
-  std::mutex resize_mutex_;
+};
+
+}  // namespace hash_table_internals
+
+template<typename Key, typename Value>
+class HashTable {
+  using HashTableImpl = hash_table_internals::HashTableImpl<Key, Value>;
+
+  friend class hash_table_internals::HashTableImpl<Key, Value>;
+
+ public:
+  explicit HashTable(size_t bucket_count) : hash_table_impl_(new HashTableImpl(bucket_count, this)) {
+  }
+
+  ~HashTable() {
+    delete hash_table_impl_.load();
+  }
+
+  bool Insert(Key key, Value value) {
+    std::unique_lock<RCULock> rcu_lock(lock_);
+    return hash_table_impl_.load()->Insert(std::move(key), std::move(value));
+  }
+
+  bool Remove(const Key& key) {
+    std::unique_lock<RCULock> rcu_lock(lock_);
+    return hash_table_impl_.load()->Remove(key);
+  }
+
+  bool Lookup(const Key& key, Value& value) {
+    std::unique_lock<RCULock> rcu_lock(lock_);
+    return hash_table_impl_.load()->Lookup(key, value);
+  }
+
+  void Clear() {
+    hash_table_impl_.load()->Clear();
+  }
+
+ private:
+  size_t BucketCount() const {
+    return hash_table_impl_.load()->BucketCount();
+  }
+
+  void Resize(size_t bucket_count) {
+    return;
+    if (!resize_mutex_.try_lock()) {
+      return;
+    }
+    auto* old_hash_table = hash_table_impl_.load();
+    hash_table_impl_.store(hash_table_impl_.load()->ReallocateToNewHashTable(bucket_count));
+    lock_.Synchronize();
+    delete old_hash_table;
+    ++resize_count_;
+  }
+
+ private:
+  std::atomic<HashTableImpl*> hash_table_impl_;
   RCULock lock_;
+  std::mutex resize_mutex_;
+  std::atomic<std::uint32_t> resize_count_ = 0;
 };

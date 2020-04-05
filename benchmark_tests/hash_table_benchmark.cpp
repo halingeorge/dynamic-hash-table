@@ -59,7 +59,7 @@ void ManyLookups(benchmark::State& state, bool measure_lookup, bool measure_inse
 
   if (state.thread_index == 0) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    hash_table.clear();
+    hash_table.Clear();
     put.store(0);
     get.store(0);
   }
