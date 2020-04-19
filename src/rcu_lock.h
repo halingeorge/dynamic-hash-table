@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <atomic>
+#include <cassert>
 
 class RCULock {
  public:
@@ -17,10 +18,12 @@ class RCULock {
   }
 
   void ReadLock() {
+    assert(*last_read_ % 2 == 0);
     ++(*last_read_);
   }
 
   void ReadUnlock() {
+    assert(*last_read_ % 2 == 1);
     ++(*last_read_);
   }
 
@@ -32,7 +35,10 @@ class RCULock {
       current_timestamp.push_back(&element);
     }
     for (int i = 0; i < current_timestamp.size(); i++) {
-      while ((synced_timestamp[i] & 1) && current_timestamp[i]->load() == synced_timestamp[i]) {
+      if (!(synced_timestamp[i] & 1u)) {
+        continue;
+      }
+      while (current_timestamp[i]->load() == synced_timestamp[i]) {
         std::this_thread::yield();
       }
     }

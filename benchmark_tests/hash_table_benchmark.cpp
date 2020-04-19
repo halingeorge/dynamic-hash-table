@@ -50,10 +50,11 @@ void ManyLookups(benchmark::State& state, bool measure_lookup, bool measure_inse
         set_iteration_time(start);
       }
     } else {
-      hash_table.Remove(added_keys[get.fetch_add(1)].load());
+      bool result = hash_table.Remove(added_keys[get.fetch_add(1)].load());
       if (measure_remove) {
         set_iteration_time(start);
       }
+      ASSERT_TRUE(result);
     }
   }
 

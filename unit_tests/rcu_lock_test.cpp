@@ -40,3 +40,42 @@ TEST(RCULock, SynchronizeWithReaders) {
   rcu_lock.Synchronize();
   ASSERT_EQ(readers_completed.load(), kReaders);
 }
+
+//struct Data {
+//  std::atomic<size_t> value = 0;
+//  RCULock lock;
+//};
+//
+//TEST(RCULock, InnerLocks) {
+//  const size_t kReaders = 17;
+//  const int32_t kMinSleep = 100;
+//  const int32_t kMaxSleep = 1000;
+//
+//  RCULock data_lock;
+//  auto* data = new Data();
+//  auto* data_replace = new Data();
+//
+//  auto reader_routine = [&]() {
+//    std::random_device rd;
+//    std::mt19937 mt(rd());
+//    std::uniform_int_distribution<int> distribution(kMinSleep, kMaxSleep);
+//
+//    std::this_thread::sleep_for(std::chrono::milliseconds(distribution(mt)));
+//
+//    std::unique_lock lock(data_lock);
+//
+//    ++
+//  };
+//
+//  std::vector<std::thread> threads;
+//  threads.reserve(kReaders);
+//  for (size_t i = 0; i < kReaders; ++i) {
+//    threads.emplace_back(reader_routine);
+//  }
+//  for (size_t i = 0; i < kReaders; i++) {
+//    threads[i].join();
+//  }
+//
+//
+//  ASSERT_EQ(value.load(), kReaders);
+//}

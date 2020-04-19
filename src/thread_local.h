@@ -7,6 +7,7 @@
 #include <atomic>
 #include <pthread.h>
 #include <thread>
+#include <cassert>
 
 template<typename T>
 class ThreadLocal {
@@ -21,13 +22,15 @@ class ThreadLocal {
 
  public:
   ThreadLocal() {
-    pthread_key_create(&object_key_, nullptr);
+    auto error = pthread_key_create(&object_key_, nullptr);
+    assert(error == 0);
     head_ = new Node(nullptr);
     tail_.store(head_.load());
   }
 
   ~ThreadLocal() {
     clear_list();
+    assert(pthread_key_delete(object_key_) == 0);
   }
 
   T& operator*() {
@@ -80,7 +83,8 @@ class ThreadLocal {
     clear_list();
     head_ = new Node(nullptr);
     tail_.store(head_.load());
-    pthread_key_create(&object_key_, nullptr);
+    pthread_key_delete(object_key_);
+    assert(pthread_key_create(&object_key_, nullptr) == 0);
   }
 
  private:

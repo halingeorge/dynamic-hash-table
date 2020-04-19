@@ -8,7 +8,7 @@ import tempfile
 def get_build_dir_name(cxx_flag):
     if not cxx_flag:
         return 'build'
-    elif cxx_flag == 'asan':
+    elif cxx_flag == '-fsanitize=address':
         return 'asan_build'
     return 'tsan_build'
 
