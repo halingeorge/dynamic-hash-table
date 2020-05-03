@@ -33,11 +33,11 @@ def run_and_exit_if_fail(command, exit_if_error=True):
     print('Done')
 
 
-def run_benchmark(build_type='release'):
+def run_benchmark(build_type='release', cxx_flag=''):
     run_and_exit_if_fail(f'mkdir {build_type}_benchmark_build', exit_if_error=False)
     cur_dir = os.getcwd()
     os.chdir(f'{build_type}_benchmark_build')
-    run_and_exit_if_fail(f'cmake -DCMAKE_BUILD_TYPE={build_type} ..')
+    run_and_exit_if_fail(f'cmake -DCMAKE_BUILD_TYPE={build_type} -DCMAKE_CXX_FLAGS="{cxx_flag}" ..')
     run_and_exit_if_fail('make -j4')
     run_and_exit_if_fail('benchmark_tests/hash_table_benchmark')
     os.chdir(cur_dir)
@@ -62,7 +62,7 @@ def main():
         run_benchmark()
         return
     if args.benchmark_debug:
-        run_benchmark('debug')
+        run_benchmark('debug', '-fsanitize=thread')
         return
 
     if not cxx_flags:
