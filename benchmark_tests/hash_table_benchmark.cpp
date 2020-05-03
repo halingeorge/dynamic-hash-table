@@ -11,10 +11,28 @@
 namespace {
 
 constexpr int32_t kMinNumber = 1;
-constexpr int32_t kMaxNumber = 100000;
+constexpr int32_t kMaxNumber = 1000000;
 
 constexpr int32_t kHashTableSize = 1;
 constexpr int32_t kMaxAddedNumbers = kMaxNumber - kMinNumber + 1;
+
+class Timer {
+ public:
+  explicit Timer(benchmark::State& state) : state_(state), start_clock_(std::chrono::high_resolution_clock::now()) {
+  }
+
+  void Flush() {
+    auto end = std::chrono::system_clock::now();
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start_clock_);
+    state_.SetIterationTime(elapsed.count());
+    start_clock_ = end;
+  }
+
+ private:
+  benchmark::State& state_;
+  std::chrono::high_resolution_clock::time_point start_clock_;
+};
 
 }  // namespace
 
@@ -22,34 +40,10 @@ struct HashTableFixture : public benchmark::Fixture {
  public:
   HashTableFixture()
       : added_keys_(kMaxAddedNumbers),
-        put(0),
-        get(0),
-        count(0),
         hash_table(kHashTableSize) {}
 
   void ManyLookups(benchmark::State& state, bool measure_lookup,
                    bool measure_insert, bool measure_remove);
-
-  void PutElement(int32_t key) {
-    std::unique_lock lock(mutex);
-    ASSERT_TRUE(count < kMaxAddedNumbers);
-    added_keys_[put++ % added_keys_.size()] = key;
-    ++count;
-  }
-
-  std::optional<int32_t> GetElement() {
-    std::unique_lock lock(mutex);
-    if (count > 0) {
-      --count;
-      return added_keys_[get++ % added_keys_.size()];
-    }
-    return std::nullopt;
-  }
-
-  uint64_t put;
-  uint64_t get;
-  uint64_t count;
-  std::mutex mutex;
 
   HashTable<int32_t, int32_t> hash_table;
 
@@ -59,85 +53,59 @@ struct HashTableFixture : public benchmark::Fixture {
 
 void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
                                    bool measure_insert, bool measure_remove) {
-  std::random_device rd;
-  std::mt19937 mt(rd());
-  std::uniform_int_distribution<int32_t> distribution(kMinNumber, kMaxNumber);
+  static constexpr size_t kBatchSize = 1000;
 
-  auto set_iteration_time = [&state](auto start) {
-    auto end = std::chrono::high_resolution_clock::now();
-    auto elapsed_seconds =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
-    state.SetIterationTime(elapsed_seconds.count());
-  };
+  Timer timer(state);
+
+  int current_key = 0;
+  int32_t temp;
 
   while (state.KeepRunning()) {
-    int32_t temp;
-    if (state.thread_index == 0) {
-      auto key = distribution(mt);
-      auto start = std::chrono::high_resolution_clock::now();
-      hash_table.Lookup(key, temp);
-      if (measure_lookup) {
-        set_iteration_time(start);
+    for (size_t i = 0; i < kBatchSize; i++) {
+      auto key = kMinNumber + current_key++ % (kMaxNumber - kMinNumber);
+      if (state.thread_index == 0) {
+        hash_table.Lookup(key, temp);
+      } else if (state.thread_index <= state.threads / 2) {
+        hash_table.Insert(key, /*value =*/ 0);
+      } else {
+        hash_table.Remove(key);
       }
-    } else if (state.thread_index <= state.threads / 2) {
-      auto added_key = distribution(mt);
-      auto start = std::chrono::high_resolution_clock::now();
-      bool added = hash_table.Insert(added_key, distribution(mt));
-      if (measure_insert) {
-        set_iteration_time(start);
-      }
-      if (added) {
-        PutElement(added_key);
-      }
-    } else {
-      // Make sure to change this statement if more than 1 removers.
-      auto key = GetElement();
-      if (!key.has_value()) {
-        auto start = std::chrono::high_resolution_clock::now();
-        bool result = hash_table.Remove(kMaxNumber + 1);
-        if (measure_remove) {
-          set_iteration_time(start);
-        }
-        ASSERT_FALSE(result);
-        continue;
-      }
-      auto start = std::chrono::high_resolution_clock::now();
-      bool result = hash_table.Remove(*key);
-      if (measure_remove) {
-        set_iteration_time(start);
-      }
-      ASSERT_TRUE(result);
+    }
+
+    if (state.thread_index == 0 && measure_lookup || state.thread_index <= state.threads / 2 && measure_insert
+        || state.thread_index == state.threads / 2 + 1 && measure_remove) {
+      timer.Flush();
     }
   }
 }
 
 BENCHMARK_DEFINE_F(HashTableFixture, MeasureLookup)(benchmark::State& state) {
   ManyLookups(state,
-              /*measure_lookup =*/true,
-              /*measure_insert =*/false,
-              /*measure_remove =*/false);
+      /*measure_lookup =*/ true,
+      /*measure_insert =*/ false,
+      /*measure_remove =*/ false);
 }
 
 BENCHMARK_DEFINE_F(HashTableFixture, MeasureInsert)(benchmark::State& state) {
   ManyLookups(state,
-              /*measure_lookup =*/false,
-              /*measure_insert =*/true,
-              /*measure_remove =*/false);
+      /*measure_lookup =*/ false,
+      /*measure_insert =*/ true,
+      /*measure_remove =*/ false);
 }
 
 BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
   ManyLookups(state,
-              /*measure_lookup =*/false,
-              /*measure_insert =*/false,
-              /*measure_remove =*/true);
+      /*measure_lookup =*/ false,
+      /*measure_insert =*/ false,
+      /*measure_remove =*/ true);
 }
 
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Threads(3)
+    ->Threads(4)
     ->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Threads(3)
+    ->Threads(4)
     ->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Threads(3)
+    ->Threads(4)
     ->UseManualTime();
