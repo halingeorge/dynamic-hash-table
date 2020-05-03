@@ -11,7 +11,7 @@
 namespace {
 
 constexpr int32_t kMinNumber = 1;
-constexpr int32_t kMaxNumber = 100000;
+constexpr int32_t kMaxNumber = 1000;
 
 constexpr int32_t kHashTableSize = 1;
 constexpr int32_t kMaxAddedNumbers = kMaxNumber - kMinNumber + 1;
@@ -20,17 +20,12 @@ constexpr int32_t kMaxAddedNumbers = kMaxNumber - kMinNumber + 1;
 
 struct HashTableFixture : public benchmark::Fixture {
  public:
-  HashTableFixture() : added_keys_(kMaxAddedNumbers) {
-  }
-
-  void SetUp(const benchmark::State& state) override {
-    put = 0;
-    get = 0;
-    count = 0;
-    hash_table = std::make_unique<HashTable<int32_t, int32_t>>(kHashTableSize);
-  }
-
-  void TearDown(const benchmark::State& state) override {}
+  HashTableFixture()
+      : added_keys_(kMaxAddedNumbers),
+        put(0),
+        get(0),
+        count(0),
+        hash_table(kHashTableSize) {}
 
   void ManyLookups(benchmark::State& state, bool measure_lookup,
                    bool measure_insert, bool measure_remove);
@@ -56,7 +51,7 @@ struct HashTableFixture : public benchmark::Fixture {
   uint64_t count;
   std::mutex mutex;
 
-  std::unique_ptr<HashTable<int32_t, int32_t>> hash_table;
+  HashTable<int32_t, int32_t> hash_table;
 
  private:
   std::vector<int32_t> added_keys_;
@@ -80,14 +75,14 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
     if (state.thread_index == 0) {
       auto key = distribution(mt);
       auto start = std::chrono::high_resolution_clock::now();
-      hash_table->Lookup(key, temp);
+      hash_table.Lookup(key, temp);
       if (measure_lookup) {
         set_iteration_time(start);
       }
     } else if (state.thread_index <= state.threads / 2) {
       auto added_key = distribution(mt);
       auto start = std::chrono::high_resolution_clock::now();
-      bool added = hash_table->Insert(added_key, distribution(mt));
+      bool added = hash_table.Insert(added_key, distribution(mt));
       if (measure_insert) {
         set_iteration_time(start);
       }
@@ -99,7 +94,7 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
       auto key = GetElement();
       if (!key.has_value()) {
         auto start = std::chrono::high_resolution_clock::now();
-        bool result = hash_table->Remove(kMaxNumber + 1);
+        bool result = hash_table.Remove(kMaxNumber + 1);
         if (measure_remove) {
           set_iteration_time(start);
         }
@@ -107,7 +102,7 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
         continue;
       }
       auto start = std::chrono::high_resolution_clock::now();
-      bool result = hash_table->Remove(*key);
+      bool result = hash_table.Remove(*key);
       if (measure_remove) {
         set_iteration_time(start);
       }
@@ -137,12 +132,12 @@ BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
               /*measure_remove =*/true);
 }
 
-BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Threads(4)
-    ->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Threads(4)
+    ->Threads(3)
+    ->UseManualTime();
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
+    ->Threads(3)
     ->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Threads(4)
+    ->Threads(3)
     ->UseManualTime();
