@@ -62,7 +62,7 @@ def main():
         run_benchmark('release', '')
         return
     if args.benchmark_debug:
-        run_benchmark('debug', '-fsanitize=address')
+        run_benchmark('debug', '-fsanitize=thread')
         return
 
     if not cxx_flags:
