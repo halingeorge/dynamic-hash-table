@@ -33,12 +33,12 @@ def run_and_exit_if_fail(command, exit_if_error=True):
     print('Done')
 
 
-def run_benchmark():
-    run_and_exit_if_fail(f'mkdir release_build', exit_if_error=False)
+def run_benchmark(build_type='release'):
+    run_and_exit_if_fail(f'mkdir {build_type}_benchmark_build', exit_if_error=False)
     cur_dir = os.getcwd()
-    os.chdir('release_build')
-    run_and_exit_if_fail(f'cmake -DCMAKE_BUILD_TYPE=release ..')
-    run_and_exit_if_fail(f'make -j4')
+    os.chdir(f'{build_type}_benchmark_build')
+    run_and_exit_if_fail(f'cmake -DCMAKE_BUILD_TYPE={build_type} ..')
+    run_and_exit_if_fail('make -j4')
     run_and_exit_if_fail('benchmark_tests/hash_table_benchmark')
     os.chdir(cur_dir)
 
@@ -48,7 +48,8 @@ def main():
 
     parser.add_argument('--asan', '-a', action='store_true', help='run tests under asan')
     parser.add_argument('--tsan', '-t', action='store_true', help='run tests under tsan')
-    parser.add_argument('--benchmark', '-b', action='store_true', help='run benchmark after unittests')
+    parser.add_argument('--benchmark', '-b', action='store_true', help='run benchmark')
+    parser.add_argument('--benchmark-debug', action='store_true', help='run benchmark in debug mode')
 
     args = parser.parse_args()
 
@@ -57,7 +58,14 @@ def main():
         cxx_flags.append('-fsanitize=address')
     if args.tsan:
         cxx_flags.append('-fsanitize=thread')
-    if not cxx_flags and not args.benchmark:
+    if args.benchmark:
+        run_benchmark()
+        return
+    if args.benchmark_debug:
+        run_benchmark('debug')
+        return
+
+    if not cxx_flags:
         cxx_flags = ['']
 
     for cxx_flag in cxx_flags:
@@ -69,10 +77,6 @@ def main():
         run_and_exit_if_fail('make -j4')
         run_and_exit_if_fail('unit_tests/hash_table_test')
         os.chdir(cur_dir)
-
-    if args.benchmark:
-        run_benchmark()
-        return
 
 
 if __name__ == '__main__':

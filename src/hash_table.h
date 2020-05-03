@@ -49,7 +49,6 @@ class HashTableImpl {
       new_node->key = key;
       new_node->value = value;
       LinkNode(new_node, index);
-      total_element_count_->fetch_add(1);
       return true;
     }
 
@@ -71,7 +70,6 @@ class HashTableImpl {
       head->next[index].store(head->next[index].load()->next[index].load());
       lock_.Synchronize();
       delete next;
-      total_element_count_->fetch_add(-1);
       return true;
     }
 
@@ -117,7 +115,6 @@ class HashTableImpl {
 
     HashTable<Key, Value>* hash_table_ = nullptr;
     std::atomic<Node*> head_ = nullptr;
-    std::atomic<size_t>* total_element_count_ = nullptr;
     RCULock lock_;
     size_t index_to_cleanup_ = std::numeric_limits<size_t>::max();
     std::mutex mutex_;
@@ -149,10 +146,6 @@ class HashTableImpl {
     UpdateModeOn(key);
     auto [bucket, index] = GetBucket(this, key);
     auto result = bucket->Remove(key, index);
-    if (Bucket::kBucketNodeCountBeforeResize * BucketCount() >=
-        element_count_ * 2) {
-      master_hash_table_->NeedResize(BucketCount() / 2 + 1);
-    }
     UpdateModeOff(key);
     return result;
   }
@@ -179,7 +172,6 @@ class HashTableImpl {
   void Clear() {
     auto temp = InitBuckets(buckets_.size());
     buckets_.swap(temp);
-    element_count_ = 0;
   }
 
  public:
@@ -209,7 +201,6 @@ class HashTableImpl {
     for (size_t i = 0; i < bucket_count; i++) {
       buckets[i].hash_table_ = master_hash_table_;
       buckets[i].index_to_cleanup_ = current_index_;
-      buckets[i].total_element_count_ = &element_count_;
     }
     return buckets;
   }
@@ -265,7 +256,6 @@ class HashTableImpl {
  private:
   std::atomic<HashTableImpl*> new_table_ = nullptr;
   std::atomic<int32_t> resize_index_ = -1;
-  std::atomic<size_t> element_count_ = 0;
 };
 
 }  // namespace hash_table_internals
@@ -332,13 +322,10 @@ class HashTable {
       resize_mutex_.unlock();
       return;
     }
-    if (old_hash_table->BucketCount() < bucket_count) {
-      std::cout << "Increase from " << old_hash_table->BucketCount() << " to "
-                << bucket_count << std::endl;
-    } else {
-      std::cout << "Decrease from " << old_hash_table->BucketCount() << " to "
-                << bucket_count << std::endl;
-    }
+
+//    std::cout << "Increasing from " << old_hash_table->BucketCount() << " to "
+//              << bucket_count << std::endl;
+
     hash_table_impl_.store(
         old_hash_table->ReallocateToNewHashTable(bucket_count));
     lock_.Synchronize();
@@ -360,7 +347,7 @@ class HashTable {
   }
 
  private:
-  static constexpr size_t kMaxBucketNumber = 512;
+  static constexpr size_t kMaxBucketNumber = 256;
 
   std::atomic<HashTableImpl*> hash_table_impl_;
   RCULock lock_;
