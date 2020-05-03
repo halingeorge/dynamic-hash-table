@@ -59,7 +59,7 @@ def main():
     if args.tsan:
         cxx_flags.append('-fsanitize=thread')
     if args.benchmark:
-        run_benchmark('release', '-fsanitize=thread')
+        run_benchmark('release', '')
         return
     if args.benchmark_debug:
         run_benchmark('debug', '-fsanitize=address')

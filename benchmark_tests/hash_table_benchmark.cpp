@@ -11,7 +11,7 @@
 namespace {
 
 constexpr int32_t kMinNumber = 1;
-constexpr int32_t kMaxNumber = 1000;
+constexpr int32_t kMaxNumber = 100000;
 
 constexpr int32_t kHashTableSize = 1;
 constexpr int32_t kMaxAddedNumbers = kMaxNumber - kMinNumber + 1;

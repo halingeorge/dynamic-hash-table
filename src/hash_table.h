@@ -68,7 +68,7 @@ class HashTableImpl {
       }
       auto next = head->next[index].load();
       head->next[index].store(head->next[index].load()->next[index].load());
-      lock_.Synchronize();
+      bucket_locks_->Synchronize(bucket_number_);
       delete next;
       return true;
     }
@@ -92,7 +92,7 @@ class HashTableImpl {
 
    private:
     bool Find(const Key& key, size_t index) {
-      std::unique_lock<RCULock> lock(lock_);
+      bucket_locks_->lock(bucket_number_);
       auto head = head_.load()->next[index].load();
       uint32_t scanned_count = 0;
       bool found = false;
@@ -107,6 +107,7 @@ class HashTableImpl {
       if (scanned_count >= kBucketNodeCountBeforeResize) {
         hash_table_->NeedResize(hash_table_->BucketCount() * 2 + 1);
       }
+      bucket_locks_->unlock(bucket_number_);
       return found;
     }
 
@@ -115,8 +116,9 @@ class HashTableImpl {
 
     HashTable<Key, Value>* hash_table_ = nullptr;
     std::atomic<Node*> head_ = nullptr;
-    RCULock lock_;
     size_t index_to_cleanup_ = std::numeric_limits<size_t>::max();
+    RCUPerBucketLock* bucket_locks_ = nullptr;
+    size_t bucket_number_ = 0;
     std::mutex mutex_;
   };
 
@@ -125,6 +127,7 @@ class HashTableImpl {
                          size_t current_index = 0)
       : master_hash_table_(hash_table),
         current_index_(current_index),
+        bucket_locks_(bucket_count),
         buckets_(InitBuckets(bucket_count)) {}
 
   void LinkNode(typename Bucket::Node* node) {
@@ -153,17 +156,21 @@ class HashTableImpl {
   bool Lookup(const Key& key, Value& value) {
     auto [bucket, bucket_number] = GetBucketInSpecifiedHashTable(this, key);
     {
-      std::unique_lock lock(bucket->lock_);
+      bucket->bucket_locks_->lock(bucket->bucket_number_);
       if (bucket_number >= resize_index_.load() &&
           bucket->Lookup(key, value, current_index_)) {
+        bucket->bucket_locks_->unlock(bucket->bucket_number_);
         return true;
       }
+      bucket->bucket_locks_->unlock(bucket->bucket_number_);
     }
 
     auto [new_bucket, new_index] = GetBucket(this, key);
     if (new_bucket != bucket) {
-      std::unique_lock lock(new_bucket->lock_);
-      return new_bucket->Lookup(key, value, new_index);
+      new_bucket->bucket_locks_->lock(new_bucket->bucket_number_);
+      auto result = new_bucket->Lookup(key, value, new_index);
+      new_bucket->bucket_locks_->unlock(new_bucket->bucket_number_);
+      return result;
     }
 
     return false;
@@ -201,6 +208,8 @@ class HashTableImpl {
     for (size_t i = 0; i < bucket_count; i++) {
       buckets[i].hash_table_ = master_hash_table_;
       buckets[i].index_to_cleanup_ = current_index_;
+      buckets[i].bucket_locks_ = &bucket_locks_;
+      buckets[i].bucket_number_ = i;
     }
     return buckets;
   }
@@ -241,7 +250,7 @@ class HashTableImpl {
         current_node = current_node->next[current_index_].load();
       }
       bucket->head_.load()->next[current_index_] = nullptr;
-      bucket->lock_.Synchronize();
+      bucket->bucket_locks_->Synchronize(bucket->bucket_number_);
     }
     ++resize_index_;
     return new_table;
@@ -250,6 +259,7 @@ class HashTableImpl {
  private:
   HashTable<Key, Value>* const master_hash_table_;
   size_t current_index_ = 0;
+  RCUPerBucketLock bucket_locks_;
   std::vector<Bucket> buckets_;
   std::hash<Key> hasher_;
 
@@ -323,8 +333,8 @@ class HashTable {
       return;
     }
 
-//    std::cout << "Increasing from " << old_hash_table->BucketCount() << " to "
-//              << bucket_count << std::endl;
+    std::cout << "Increasing from " << old_hash_table->BucketCount() << " to "
+              << bucket_count << std::endl;
 
     hash_table_impl_.store(
         old_hash_table->ReallocateToNewHashTable(bucket_count));
@@ -336,9 +346,6 @@ class HashTable {
   }
 
   void NeedResize(size_t bucket_count) {
-    if (bucket_count >= kMaxBucketNumber) {
-      return;
-    }
     if (resize_bucket_count_.load() != -1) {
       return;
     }
@@ -347,8 +354,6 @@ class HashTable {
   }
 
  private:
-  static constexpr size_t kMaxBucketNumber = 256;
-
   std::atomic<HashTableImpl*> hash_table_impl_;
   RCULock lock_;
   std::mutex resize_mutex_;
