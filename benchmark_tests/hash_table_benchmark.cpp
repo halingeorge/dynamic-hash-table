@@ -152,8 +152,8 @@ BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
 }
 
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+    ->Args({1, 1, 1})->Args({2, 2, 2})->Args({4, 4, 4})->Args({8, 8, 8})->Args({8, 16, 16})->UseRealTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+    ->Args({1, 1, 1})->Args({6, 4, 4})->Args({12, 4, 4})->Args({8, 8, 8})->Args({16, 8, 8})->UseRealTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+    ->Args({1, 1, 1})->Args({2, 2, 2})->Args({4, 4, 4})->Args({8, 8, 8})->Args({8, 16, 16})->UseRealTime();
