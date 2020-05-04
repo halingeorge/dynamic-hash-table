@@ -103,10 +103,10 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
 
   while (state.KeepRunning()) {
     for (size_t i = 0; i < kBatchSize; i++) {
-      if (state.thread_index == 0) {
+      if (state.thread_index < state.range(0)) {
         auto key = generator.GenerateLookupKey();
         hash_table.Lookup(key, temp);
-      } else if (state.thread_index <= state.threads / 2) {
+      } else if (state.thread_index < state.range(0) + state.range(1)) {
         auto key = generator.GenerateInsertKey();
         hash_table.Insert(key, /*value =*/ 0);
       } else {
@@ -115,8 +115,8 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
       }
     }
 
-    if ((state.thread_index == 0 && measure_lookup) || (state.thread_index <= state.threads / 2 && measure_insert)
-        || (state.thread_index == state.threads / 2 + 1 && measure_remove)) {
+    if ((state.thread_index == 0 && measure_lookup) || (state.thread_index == state.range(0) && measure_insert)
+        || (state.thread_index == state.range(0) + state.range(1) && measure_remove)) {
       timer.Flush();
     }
   }
@@ -144,11 +144,11 @@ BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
 }
 
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Threads(3)
-    ->UseManualTime();
+    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
+    ->Threads(4)->Args({1, 2, 1})->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Threads(3)
-    ->UseManualTime();
+    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
+    ->Threads(4)->Args({1, 2, 1})->UseManualTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Threads(3)
-    ->UseManualTime();
+    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
+    ->Threads(4)->Args({1, 2, 1})->UseManualTime();

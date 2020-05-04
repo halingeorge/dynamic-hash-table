@@ -333,9 +333,6 @@ class HashTable {
       return;
     }
 
-    std::cout << "Increasing from " << old_hash_table->BucketCount() << " to "
-              << bucket_count << std::endl;
-
     hash_table_impl_.store(
         old_hash_table->ReallocateToNewHashTable(bucket_count));
     lock_.Synchronize();
