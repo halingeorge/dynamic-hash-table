@@ -16,24 +16,6 @@ constexpr int32_t kMaxNumber = (1 << 20) - 1;
 constexpr int32_t kHashTableSize = 1;
 constexpr int32_t kMaxAddedNumbers = kMaxNumber - kMinNumber + 1;
 
-class Timer {
- public:
-  explicit Timer(benchmark::State& state) : state_(state), start_clock_(std::chrono::high_resolution_clock::now()) {
-  }
-
-  void Flush() {
-    auto end = std::chrono::system_clock::now();
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start_clock_);
-    state_.SetIterationTime(elapsed.count());
-    start_clock_ = end;
-  }
-
- private:
-  benchmark::State& state_;
-  std::chrono::high_resolution_clock::time_point start_clock_;
-};
-
 class FastKeyGenerator {
  public:
   FastKeyGenerator()
@@ -94,31 +76,57 @@ struct HashTableFixture : public benchmark::Fixture {
 
 void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
                                    bool measure_insert, bool measure_remove) {
-  static constexpr size_t kBatchSize = 1000;
+  std::atomic<bool> stopped = false;
 
-  Timer timer(state);
-  FastKeyGenerator generator;
-
-  int32_t temp;
-
-  while (state.KeepRunning()) {
-    for (size_t i = 0; i < kBatchSize; i++) {
-      if (state.thread_index < state.range(0)) {
+  auto func = [&](size_t thread_index) {
+    FastKeyGenerator generator;
+    if (thread_index < state.range(0)) {
+      int32_t temp;
+      while (!stopped) {
         auto key = generator.GenerateLookupKey();
         hash_table.Lookup(key, temp);
-      } else if (state.thread_index < state.range(0) + state.range(1)) {
+      }
+    } else if (state.range(0) <= thread_index && thread_index < state.range(0) + state.range(1)) {
+      while (!stopped) {
         auto key = generator.GenerateInsertKey();
         hash_table.Insert(key, /*value =*/ 0);
-      } else {
+      }
+    } else {
+      while (!stopped) {
         auto key = generator.GenerateRemoveKey();
         hash_table.Remove(key);
       }
     }
+  };
 
-    if ((state.thread_index == 0 && measure_lookup) || (state.thread_index == state.range(0) && measure_insert)
-        || (state.thread_index == state.range(0) + state.range(1) && measure_remove)) {
-      timer.Flush();
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < state.range(0) + state.range(1) + state.range(2); i++) {
+    threads.emplace_back(func, i);
+  }
+
+  FastKeyGenerator generator;
+  if (measure_lookup) {
+    int32_t temp;
+    for (auto _ : state) {
+      auto key = generator.GenerateLookupKey();
+      hash_table.Lookup(key, temp);
     }
+  } else if (measure_insert) {
+    for (auto _ : state) {
+      auto key = generator.GenerateInsertKey();
+      hash_table.Insert(key, /*value =*/ 0);
+    }
+  } else if (measure_remove) {
+    for (auto _ : state) {
+      auto key = generator.GenerateRemoveKey();
+      hash_table.Remove(key);
+    }
+  }
+
+  stopped = true;
+
+  for (auto& t : threads) {
+    t.join();
   }
 }
 
@@ -144,11 +152,8 @@ BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
 }
 
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
-    ->Threads(4)->Args({1, 2, 1})->UseManualTime();
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
-    ->Threads(4)->Args({1, 2, 1})->UseManualTime();
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
 BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Threads(3)->Args({1, 1, 1})->UseManualTime()
-    ->Threads(4)->Args({1, 2, 1})->UseManualTime();
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
