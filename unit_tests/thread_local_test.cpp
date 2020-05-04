@@ -76,3 +76,27 @@ TEST(ThreadLocal, IterateThreadLocalValues) {
     threads[i].join();
   }
 }
+
+TEST(ThreadLocal, IterateThreadLocalCounters) {
+  static const size_t kThreads = 10;
+  ThreadLocal<size_t> tl;
+
+  auto accessor = [&tl]() {
+    ++(*tl);
+    ASSERT_EQ(*tl, 1);
+  };
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < kThreads; i++) {
+    threads.emplace_back(accessor);
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  size_t total = 0;
+  for (auto thread_local_value : tl) {
+    total += thread_local_value;
+  }
+  ASSERT_EQ(total, kThreads);
+}

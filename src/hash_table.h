@@ -33,7 +33,7 @@ class HashTableImpl {
     Bucket() : head_(new Node()) {}
 
     ~Bucket() {
-      auto head = head_.load();
+      auto head = head_;
       while (head) {
         auto next = head->next[index_to_cleanup_].load();
         delete head;
@@ -53,12 +53,12 @@ class HashTableImpl {
     }
 
     void LinkNode(Node* new_node, size_t index) {
-      new_node->next[index].store(head_.load()->next[index]);
-      head_.load()->next[index].store(new_node);
+      new_node->next[index].store(head_->next[index]);
+      head_->next[index].store(new_node);
     }
 
     bool Remove(const Key& key, size_t index) {
-      auto head = head_.load();
+      auto head = head_;
       while (head->next[index].load() != nullptr &&
              head->next[index].load()->key != key) {
         head = head->next[index].load();
@@ -75,7 +75,7 @@ class HashTableImpl {
 
     bool Lookup(const Key& key, Value& value, int index) {
       std::optional<Value> result;
-      auto head = head_.load()->next[index].load();
+      auto head = head_->next[index].load();
       while (head != nullptr) {
         if (head->key == key) {
           result = head->value;
@@ -93,7 +93,7 @@ class HashTableImpl {
    private:
     bool Find(const Key& key, size_t index) {
       bucket_locks_->lock(bucket_number_);
-      auto head = head_.load()->next[index].load();
+      auto head = head_->next[index].load();
       uint32_t scanned_count = 0;
       bool found = false;
       while (head != nullptr) {
@@ -115,7 +115,7 @@ class HashTableImpl {
     static constexpr uint32_t kBucketNodeCountBeforeResize = 3;
 
     HashTable<Key, Value>* hash_table_ = nullptr;
-    std::atomic<Node*> head_ = nullptr;
+    Node* const head_ = nullptr;
     size_t index_to_cleanup_ = std::numeric_limits<size_t>::max();
     RCUPerBucketLock* bucket_locks_ = nullptr;
     size_t bucket_number_ = 0;
@@ -244,12 +244,12 @@ class HashTableImpl {
       auto* bucket = &buckets_[i];
       std::unique_lock<std::mutex> lock(bucket->mutex_);
       resize_index_.store(i);
-      auto* current_node = bucket->head_.load()->next[current_index_].load();
+      auto* current_node = bucket->head_->next[current_index_].load();
       while (current_node) {
         new_table->LinkNode(current_node);
         current_node = current_node->next[current_index_].load();
       }
-      bucket->head_.load()->next[current_index_] = nullptr;
+      bucket->head_->next[current_index_] = nullptr;
       bucket->bucket_locks_->Synchronize(bucket->bucket_number_);
     }
     ++resize_index_;
