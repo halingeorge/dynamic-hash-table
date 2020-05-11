@@ -11,12 +11,12 @@
 
 #include "rcu_lock.h"
 
-template <typename Key, typename Value>
+template<typename Key, typename Value>
 class HashTable;
 
 namespace hash_table_internals {
 
-template <typename Key, typename Value>
+template<typename Key, typename Value>
 class HashTableImpl {
  private:
   class Bucket {
@@ -60,7 +60,7 @@ class HashTableImpl {
     bool Remove(const Key& key, size_t index) {
       auto head = head_;
       while (head->next[index].load() != nullptr &&
-             head->next[index].load()->key != key) {
+          head->next[index].load()->key != key) {
         head = head->next[index].load();
       }
       if (head->next[index].load() == nullptr) {
@@ -131,15 +131,15 @@ class HashTableImpl {
         buckets_(InitBuckets(bucket_count)) {}
 
   void LinkNode(typename Bucket::Node* node) {
-    auto [bucket, bucket_number] =
-        GetBucketInSpecifiedHashTable(this, node->key);
+    auto[bucket, bucket_number] =
+    GetBucketInSpecifiedHashTable(this, node->key);
     std::unique_lock<std::mutex> lock(bucket->mutex_);
     return bucket->LinkNode(node, current_index_);
   }
 
   bool Insert(const Key& key, const Value& value) {
     UpdateModeOn(key);
-    auto [bucket, index] = GetBucket(this, key);
+    auto[bucket, index] = GetBucket(this, key);
     auto result = bucket->Insert(key, value, index);
     UpdateModeOff(key);
     return result;
@@ -147,14 +147,14 @@ class HashTableImpl {
 
   bool Remove(const Key& key) {
     UpdateModeOn(key);
-    auto [bucket, index] = GetBucket(this, key);
+    auto[bucket, index] = GetBucket(this, key);
     auto result = bucket->Remove(key, index);
     UpdateModeOff(key);
     return result;
   }
 
   bool Lookup(const Key& key, Value& value) {
-    auto [bucket, bucket_number] = GetBucketInSpecifiedHashTable(this, key);
+    auto[bucket, bucket_number] = GetBucketInSpecifiedHashTable(this, key);
     {
       bucket->bucket_locks_->lock(bucket->bucket_number_);
       if (bucket_number >= resize_index_.load() &&
@@ -165,7 +165,7 @@ class HashTableImpl {
       bucket->bucket_locks_->unlock(bucket->bucket_number_);
     }
 
-    auto [new_bucket, new_index] = GetBucket(this, key);
+    auto[new_bucket, new_index] = GetBucket(this, key);
     if (new_bucket != bucket) {
       new_bucket->bucket_locks_->lock(new_bucket->bucket_number_);
       auto result = new_bucket->Lookup(key, value, new_index);
@@ -185,19 +185,19 @@ class HashTableImpl {
   using HashResultType = typename std::hash<Key>::result_type;
 
   void UpdateModeOn(const Key& key) {
-    auto [bucket, bucket_number] = GetBucketInSpecifiedHashTable(this, key);
+    auto[bucket, bucket_number] = GetBucketInSpecifiedHashTable(this, key);
     bucket->mutex_.lock();
     if (bucket_number > resize_index_.load()) {
       return;
     }
-    auto [new_bucket, new_index] =
-        GetBucketInSpecifiedHashTable(new_table_.load(), key);
+    auto[new_bucket, new_index] =
+    GetBucketInSpecifiedHashTable(new_table_.load(), key);
     new_bucket->mutex_.lock();
     bucket->mutex_.unlock();
   }
 
   void UpdateModeOff(const Key& key) {
-    auto [bucket, index] = GetBucket(this, key);
+    auto[bucket, index] = GetBucket(this, key);
     bucket->mutex_.unlock();
   }
 
@@ -222,13 +222,13 @@ class HashTableImpl {
 
   static std::pair<Bucket*, int32_t> GetBucket(HashTableImpl* hash_table,
                                                const Key& key) {
-    auto [bucket, bucket_number] =
-        GetBucketInSpecifiedHashTable(hash_table, key);
+    auto[bucket, bucket_number] =
+      GetBucketInSpecifiedHashTable(hash_table, key);
     auto index = hash_table->current_index_;
     if (bucket_number <= hash_table->resize_index_.load()) {
       HashTableImpl* new_table = hash_table->new_table_.load();
-      auto [new_bucket, new_bucket_number] =
-          GetBucketInSpecifiedHashTable(new_table, key);
+      auto[new_bucket, new_bucket_number] =
+        GetBucketInSpecifiedHashTable(new_table, key);
       bucket = new_bucket;
       index = new_table->current_index_;
     }
@@ -249,6 +249,9 @@ class HashTableImpl {
         new_table->LinkNode(current_node);
         current_node = current_node->next[current_index_].load();
       }
+      // We have to cut the link to the chain in the old hash table. If a reallocation has progressed beyond the current
+      // bucket, and later an element is removed from the new hash table, readers must not be able to access a removed
+      // element.
       bucket->head_->next[current_index_] = nullptr;
       bucket->bucket_locks_->Synchronize(bucket->bucket_number_);
     }
@@ -270,7 +273,7 @@ class HashTableImpl {
 
 }  // namespace hash_table_internals
 
-template <typename Key, typename Value>
+template<typename Key, typename Value>
 class HashTable {
   using HashTableImpl = hash_table_internals::HashTableImpl<Key, Value>;
 
