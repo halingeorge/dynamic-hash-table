@@ -63,6 +63,7 @@ class FastKeyGenerator {
 
 }  // namespace
 
+template<typename HashTableImpl>
 struct HashTableFixture : public benchmark::Fixture {
  public:
   HashTableFixture() : hash_table(kHashTableSize) {
@@ -71,11 +72,40 @@ struct HashTableFixture : public benchmark::Fixture {
   void ManyLookups(benchmark::State& state, bool measure_lookup,
                    bool measure_insert, bool measure_remove);
 
-  HashTable<int32_t, int32_t> hash_table;
+  void Lookup(std::unordered_map<int32_t, int32_t>& hash_table, int32_t key, int32_t& /*value*/) {
+    std::unique_lock lock(mutex);
+    hash_table.find(key);
+  }
+
+  void Lookup(HashTable<int32_t, int32_t>& hash_table, int32_t key, int32_t& value) {
+    hash_table.Lookup(key, value);
+  }
+
+  void Insert(std::unordered_map<int32_t, int32_t>& hash_table, int32_t key, int32_t value) {
+    std::unique_lock lock(mutex);
+    hash_table.emplace(key, value);
+  }
+
+  void Insert(HashTable<int32_t, int32_t>& hash_table, int32_t key, int32_t value) {
+    hash_table.Insert(key, value);
+  }
+
+  void Remove(std::unordered_map<int32_t, int32_t>& hash_table, int32_t key) {
+    std::unique_lock lock(mutex);
+    hash_table.erase(key);
+  }
+
+  void Remove(HashTable<int32_t, int32_t>& hash_table, int32_t key) {
+    hash_table.Remove(key);
+  }
+
+  HashTableImpl hash_table;
+  std::mutex mutex;
 };
 
-void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
-                                   bool measure_insert, bool measure_remove) {
+template<typename HashTable>
+void HashTableFixture<HashTable>::ManyLookups(benchmark::State& state, bool measure_lookup,
+                                              bool measure_insert, bool measure_remove) {
   std::atomic<bool> stopped = false;
 
   auto func = [&](size_t thread_index) {
@@ -84,17 +114,17 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
       int32_t temp;
       while (!stopped) {
         auto key = generator.GenerateLookupKey();
-        hash_table.Lookup(key, temp);
+        Lookup(hash_table, key, temp);
       }
     } else if (state.range(0) <= thread_index && thread_index < state.range(0) + state.range(1)) {
       while (!stopped) {
         auto key = generator.GenerateInsertKey();
-        hash_table.Insert(key, /*value =*/ 0);
+        Insert(hash_table, key, /*value =*/ 0);
       }
     } else {
       while (!stopped) {
         auto key = generator.GenerateRemoveKey();
-        hash_table.Remove(key);
+        Remove(hash_table, key);
       }
     }
   };
@@ -109,17 +139,17 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
     int32_t temp;
     for (auto _ : state) {
       auto key = generator.GenerateLookupKey();
-      hash_table.Lookup(key, temp);
+      Lookup(hash_table, key, temp);
     }
   } else if (measure_insert) {
     for (auto _ : state) {
       auto key = generator.GenerateInsertKey();
-      hash_table.Insert(key, /*value =*/ 0);
+      Insert(hash_table, key, /*value =*/ 0);
     }
   } else if (measure_remove) {
     for (auto _ : state) {
       auto key = generator.GenerateRemoveKey();
-      hash_table.Remove(key);
+      Remove(hash_table, key);
     }
   }
 
@@ -130,30 +160,71 @@ void HashTableFixture::ManyLookups(benchmark::State& state, bool measure_lookup,
   }
 }
 
-BENCHMARK_DEFINE_F(HashTableFixture, MeasureLookup)(benchmark::State& state) {
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureLookupMyHashTable,
+                            HashTable<int32_t, int32_t>)(benchmark::State& state) {
   ManyLookups(state,
       /*measure_lookup =*/ true,
       /*measure_insert =*/ false,
       /*measure_remove =*/ false);
 }
 
-BENCHMARK_DEFINE_F(HashTableFixture, MeasureInsert)(benchmark::State& state) {
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureInsertMyHashTable,
+                            HashTable<int32_t, int32_t>)(benchmark::State& state) {
   ManyLookups(state,
       /*measure_lookup =*/ false,
       /*measure_insert =*/ true,
       /*measure_remove =*/ false);
 }
 
-BENCHMARK_DEFINE_F(HashTableFixture, MeasureRemove)(benchmark::State& state) {
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureRemoveMyHashTable,
+                            HashTable<int32_t, int32_t>)(benchmark::State& state) {
   ManyLookups(state,
       /*measure_lookup =*/ false,
       /*measure_insert =*/ false,
       /*measure_remove =*/ true);
 }
 
-BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsert)
-    ->Args({1, 1, 1})->Args({2, 2, 2})->Args({4, 4, 4})->Args({8, 8, 8})->Args({8, 16, 16})->UseRealTime();
-BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookup)
-    ->Args({1, 1, 1})->Args({6, 4, 4})->Args({12, 4, 4})->Args({8, 8, 8})->Args({16, 8, 8})->UseRealTime();
-BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemove)
-    ->Args({1, 1, 1})->Args({2, 2, 2})->Args({4, 4, 4})->Args({8, 8, 8})->Args({8, 16, 16})->UseRealTime();
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureLookupStdHashTable,
+                            std::unordered_map<int32_t, int32_t>)(benchmark::State& state) {
+  ManyLookups(state,
+      /*measure_lookup =*/ true,
+      /*measure_insert =*/ false,
+      /*measure_remove =*/ false);
+}
+
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureInsertStdHashTable,
+                            std::unordered_map<int32_t, int32_t>)(benchmark::State& state) {
+  ManyLookups(state,
+      /*measure_lookup =*/ false,
+      /*measure_insert =*/ true,
+      /*measure_remove =*/ false);
+}
+
+BENCHMARK_TEMPLATE_DEFINE_F(HashTableFixture,
+                            MeasureRemoveStdHashTable,
+                            std::unordered_map<int32_t, int32_t>)(benchmark::State& state) {
+  ManyLookups(state,
+      /*measure_lookup =*/ false,
+      /*measure_insert =*/ false,
+      /*measure_remove =*/ true);
+}
+
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsertStdHashTable)
+->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookupStdHashTable)
+->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemoveStdHashTable)
+->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureInsertMyHashTable)
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureLookupMyHashTable)
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+BENCHMARK_REGISTER_F(HashTableFixture, MeasureRemoveMyHashTable)
+    ->Args({1, 1, 1})->Args({1, 2, 1})->Args({2, 2, 2})->Args({6, 2, 2})->UseRealTime();
+
